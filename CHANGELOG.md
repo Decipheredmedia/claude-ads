@@ -5,7 +5,101 @@ All notable changes to claude-ads are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.7.1] - 2026-05-18
+## [1.8.0] - 2026-07-27
+
+Major feature release adding a full SEO optimization skill powered by Venice AI,
+cross-host install support for the new skill, and comprehensive documentation for
+Windows 10/11 and Ubuntu 20.04.
+
+### Added
+
+#### SEO Skill (new, fully standalone — ads skill untouched)
+
+- **`seo/SKILL.md`** — main SEO orchestrator skill supporting `/seo scan`,
+  `/seo audit`, and `/seo fix` commands with Venice AI integration.
+- **`seo/references/seo-checks.md`** — full reference for all 16 check categories
+  with scoring weights, pass/fail criteria, and fix guidance.
+- **`skills/seo-audit/SKILL.md`** — SEO audit sub-skill: scan HTML/PHP files,
+  generate JSON + Markdown report with 0–100 score and A–F grade bands.
+- **`skills/seo-fix/SKILL.md`** — SEO auto-fixer sub-skill: idempotent in-place
+  fixes with `.bak` backups, `--dry-run` mode, PHP syntax validation via `php -l`.
+- **`skills/seo-scan/SKILL.md`** — SEO scanner sub-skill: read-only scan with
+  per-file check results (16 categories, colored status icons).
+
+#### Venice AI Provider
+
+- **`scripts/venice_provider.py`** — Venice AI REST client (OpenAI-compatible
+  `/chat/completions` API). Features: exponential backoff (1→2→4→8s, max 4
+  retries), rate-limit / server-error retry, `MockProvider` for CI tests,
+  `get_provider()` config-aware factory, CLI smoke-test mode.
+- **`scripts/seo_config.py`** — config loader for Venice AI settings.
+  Priority order: env var `VENICE_API_KEY` > config file > defaults.
+  Default config path: `~/.claude/skills/seo/config.json`.
+
+#### SEO Python Scripts
+
+- **`scripts/seo_scanner.py`** — HTML/PHP DOM scanner. Uses BeautifulSoup4
+  (falls back to stdlib `html.parser`). PHP blocks extracted to inert placeholders
+  before parsing and restored byte-for-byte after. Runs 16 check categories (C01–C16)
+  covering title, meta description, viewport, charset, headings, image alts,
+  canonical, Open Graph, Twitter Card, JSON-LD, robots meta, image dimensions,
+  lazy loading, semantic HTML, render-blocking resources, duplicate content,
+  and hreflang. Supports cross-file duplicate detection via caller-provided sets.
+- **`scripts/seo_report.py`** — JSON + Markdown report generator. Aggregates
+  per-file scores to site-level score, groups issues by severity, surfaces quick
+  wins, generates score distribution histogram and file-score table.
+- **`scripts/seo_fixer.py`** — Auto-fixer for HTML and PHP files. Applies
+  structural fixes automatically (charset, viewport, canonical, OG/Twitter tags,
+  lazy loading, robots.txt, sitemap.xml). Calls Venice AI for generative fixes
+  (title, description, alt text, JSON-LD schema). Fully idempotent: checks for
+  existing tags before injecting. Validates PHP with `php -l` after each fix;
+  restores `.bak` on syntax failure.
+
+#### Documentation
+
+- **`README-seo.md`** — comprehensive installation and configuration guide for
+  both **Windows 10/11** (PowerShell one-liner, `setx`/`SetEnvironmentVariable`,
+  config file, PHP CLI setup) and **Ubuntu 20.04** (apt packages, bash one-liner,
+  `.bashrc` export, smoke tests). Includes requirements table, usage examples,
+  check/fix coverage table, uninstall section, and troubleshooting/FAQ.
+
+#### Tests (76 new pytest tests, no live API key required)
+
+- **`tests/seo/test_seo_scanner.py`** — 31 tests covering PHP block extraction/
+  restoration, all check functions (title/description/score/grade), `scan_file`
+  integration, duplicate detection, PHP file handling, and a full good-page smoke test.
+- **`tests/seo/test_venice_provider.py`** — 18 tests covering MockProvider,
+  VeniceProvider (config, env vars, HTTP mocking), retry logic, error handling,
+  system prompt injection, and `get_provider()` factory.
+- **`tests/seo/test_seo_report.py`** — 27 tests covering `generate_report()`,
+  scoring aggregation, issue collection, grade bands, Markdown rendering, and
+  file output.
+
+### Changed
+
+- **`install.sh`** — extended with `--venice-api-key=<key>`, `--skip-seo`,
+  `--skip-ads` flags. Installs `seo/` skill and `skills/seo-*/` sub-skills
+  alongside existing ads skill. Writes Venice AI config file during install.
+  Falls back to primary repo URL if secondary fails.
+- **`install.ps1`** — same extensions as `install.sh` using PowerShell parameters
+  (`-VeniceApiKey`, `-SkipSeo`, `-SkipAds`). Writes config JSON via
+  `ConvertTo-Json`. Tries primary repo URL first, falls back to secondary.
+- **`uninstall.sh`** — now removes `seo/` and `seo-*/` directories in addition
+  to `ads/` and `ads-*/`. Single glob loop handles both skill families.
+- **`uninstall.ps1`** — same changes as `uninstall.sh` for Windows.
+- **`requirements.txt`** — added `beautifulsoup4>=4.12.0,<5.0.0` for HTML/PHP
+  DOM parsing. Updated `Last updated` date.
+
+### Manual follow-up required
+
+- Add `VENICE_API_KEY` secret to CI/CD if you want AI-assisted fixes in automated
+  pipelines (CI tests use `MockProvider` and do not require a live key).
+- Set per-page canonical href values — the fixer injects a stub with `site_url`;
+  review and update for exact page URLs.
+- Add `og:image` URLs manually — the fixer cannot determine representative image
+  URLs automatically.
+
+
 
 Patch release covering the post-v1.7.0 polish wave: a comprehensive README
 rewrite to SSS+ tier (graded 64 → 81 → 94 → 96+ across three independent

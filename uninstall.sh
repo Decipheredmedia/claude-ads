@@ -47,15 +47,15 @@ main() {
         exit 1
     fi
 
-    echo "→ Uninstalling Claude Ads from ${SKILL_BASE} and ${AGENT_DIR}..."
+    echo "→ Uninstalling from ${SKILL_BASE} and ${AGENT_DIR}..."
 
-    # Remove orchestrator (with references + scripts)
+    # Remove orchestrators (ads + seo)
     rm -rf "${SKILL_BASE}/ads"
+    rm -rf "${SKILL_BASE}/seo"
 
-    # Remove all ads-* sub-skills via glob (no hardcoded list — new sub-skills
-    # don't require an uninstaller update)
+    # Remove all ads-* and seo-* sub-skills via glob
     if [ -d "${SKILL_BASE}" ]; then
-        for d in "${SKILL_BASE}"/ads-*/; do
+        for d in "${SKILL_BASE}"/ads-*/ "${SKILL_BASE}"/seo-*/; do
             [ -d "$d" ] && rm -rf "$d"
         done
     fi
@@ -72,7 +72,7 @@ main() {
         rm -f "${AGENT_DIR}/${agent}.md"
     done
 
-    echo "✓ Claude Ads uninstalled."
+    echo "✓ Uninstalled (ads + seo skills removed)."
 }
 
 main "$@"
