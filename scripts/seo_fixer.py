@@ -645,7 +645,7 @@ def _cli() -> None:
     try:
         from venice_provider import get_provider
         provider = get_provider()
-        if not provider.api_key:  # type: ignore[union-attr]
+        if not getattr(provider, "api_key", None):
             provider = None
     except Exception:
         provider = None

@@ -168,10 +168,12 @@ def test_to_markdown_contains_score():
 
 
 def test_to_markdown_contains_site_url():
+    site = "https://example.com"
     results = [_make_result()]
-    report = generate_report(results, site_url="https://example.com")
+    report = generate_report(results, site_url=site)
     md = to_markdown(report)
-    assert "https://example.com" in md
+    # Check the site URL appears verbatim in the markdown (e.g., in the header)
+    assert f"**Site:** {site}" in md
 
 
 def test_to_markdown_is_string():

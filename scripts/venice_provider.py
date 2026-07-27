@@ -143,7 +143,7 @@ class VeniceProvider(LLMProvider):
         body = json.dumps(payload).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"******",
+            "Authorization": "Bearer " + self.api_key,
         }
 
         last_error: Optional[Exception] = None

@@ -23,8 +23,8 @@ set -euo pipefail
 # possible via --target=...). Custom --skill-dir paths are validated against
 # `;&|$()<>` ` `, leading dashes, `..` segments, and UNC-style paths.
 
-REPO_URL="https://github.com/AI-Marketing-Hub/claude-ads"
-DECIPHERED_REPO_URL="https://github.com/Decipheredmedia/claude-ads"
+PRIMARY_REPO_URL="https://github.com/Decipheredmedia/claude-ads"
+FALLBACK_REPO_URL="https://github.com/AI-Marketing-Hub/claude-ads"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Target whitelist + path mapping
@@ -250,8 +250,8 @@ main() {
     trap 'rm -rf "${TEMP_DIR}"' EXIT
 
     echo "↓ Downloading claude-ads..."
-    git clone --depth 1 "${DECIPHERED_REPO_URL}" "${TEMP_DIR}/claude-ads" 2>/dev/null \
-        || git clone --depth 1 "${REPO_URL}" "${TEMP_DIR}/claude-ads" 2>/dev/null
+    git clone --depth 1 "${PRIMARY_REPO_URL}" "${TEMP_DIR}/claude-ads" 2>/dev/null \
+        || git clone --depth 1 "${FALLBACK_REPO_URL}" "${TEMP_DIR}/claude-ads" 2>/dev/null
 
     # ── Ads skill ────────────────────────────────────────────────────────────
     if [ "${SKIP_ADS}" = "0" ]; then
@@ -334,11 +334,8 @@ main() {
         SEO_CONFIG_FILE="${SEO_CONFIG_DIR}/config.json"
         mkdir -p "${SEO_CONFIG_DIR}"
 
-        # Use provided key or check environment
-        _VENICE_KEY="${VENICE_API_KEY:-${VENICE_API_KEY:-}}"
-        if [ -z "${_VENICE_KEY}" ] && [ -n "${VENICE_API_KEY:-}" ]; then
-            _VENICE_KEY="${VENICE_API_KEY}"
-        fi
+        # Use provided key (--venice-api-key flag) or fall back to VENICE_API_KEY env var
+        _VENICE_KEY="${VENICE_API_KEY:-}"
 
         if [ -n "${_VENICE_KEY}" ]; then
             cat > "${SEO_CONFIG_FILE}" <<VNCEOF
