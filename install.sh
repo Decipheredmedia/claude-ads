@@ -23,7 +23,8 @@ set -euo pipefail
 # possible via --target=...). Custom --skill-dir paths are validated against
 # `;&|$()<>` ` `, leading dashes, `..` segments, and UNC-style paths.
 
-REPO_URL="https://github.com/AI-Marketing-Hub/claude-ads"
+PRIMARY_REPO_URL="https://github.com/Decipheredmedia/claude-ads"
+FALLBACK_REPO_URL="https://github.com/AI-Marketing-Hub/claude-ads"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Target whitelist + path mapping
@@ -105,10 +106,11 @@ validate_install_path() {
 
 print_help() {
     cat <<EOF
-Claude Ads Installer
+Claude Ads + SEO Skill Installer
 
 Usage:
   bash install.sh [--target=<host>] [--skill-dir=<path>] [--agent-dir=<path>]
+                  [--venice-api-key=<key>] [--skip-seo] [--skip-ads]
 
 Targets (default: claude):
   claude     Claude Code (verified)
@@ -119,12 +121,16 @@ Targets (default: claude):
   goose      Goose CLI (experimental)
 
 Overrides:
-  --skill-dir=<path>   Override the target's default skill install root
-  --agent-dir=<path>   Override the target's default agent install root
+  --skill-dir=<path>         Override the target's default skill install root
+  --agent-dir=<path>         Override the target's default agent install root
+  --venice-api-key=<key>     Write Venice AI API key to the SEO config file
+  --skip-seo                 Skip SEO skill installation
+  --skip-ads                 Skip Ads skill installation
 
 Examples:
   bash install.sh
   bash install.sh --target=codex
+  bash install.sh --target=claude --venice-api-key=vn-your-key-here
   bash install.sh --target=claude --skill-dir=~/custom/skills
 
 EOF
@@ -135,6 +141,9 @@ main() {
     local TARGET="claude"
     local SKILL_DIR_OVERRIDE=""
     local AGENT_DIR_OVERRIDE=""
+    local VENICE_API_KEY=""
+    local SKIP_SEO=0
+    local SKIP_ADS=0
 
     # Parse args
     while [ $# -gt 0 ]; do
@@ -162,6 +171,20 @@ main() {
                 shift
                 [ $# -eq 0 ] && { echo "✗ --agent-dir requires a value" >&2; exit 1; }
                 AGENT_DIR_OVERRIDE="$1"
+                ;;
+            --venice-api-key=*)
+                VENICE_API_KEY="${1#*=}"
+                ;;
+            --venice-api-key)
+                shift
+                [ $# -eq 0 ] && { echo "✗ --venice-api-key requires a value" >&2; exit 1; }
+                VENICE_API_KEY="$1"
+                ;;
+            --skip-seo)
+                SKIP_SEO=1
+                ;;
+            --skip-ads)
+                SKIP_ADS=1
                 ;;
             --help|-h)
                 print_help
@@ -201,11 +224,12 @@ main() {
     fi
 
     local SKILL_DIR="${SKILL_BASE}/ads"
+    local SEO_SKILL_DIR="${SKILL_BASE}/seo"
 
-    echo "════════════════════════════════════════"
-    echo "║   Claude Ads - Installer             ║"
+    echo "════════════════════════════════════════════"
+    echo "║   Claude Ads + SEO Skill - Installer    ║"
     echo "║   Target: ${HOST_LABEL}"
-    echo "════════════════════════════════════════"
+    echo "════════════════════════════════════════════"
     echo ""
 
     # Check prerequisites
@@ -213,25 +237,51 @@ main() {
     echo "✓ Git detected"
 
     # Create directories
-    mkdir -p "${SKILL_DIR}/references"
+    if [ "${SKIP_ADS}" = "0" ]; then
+        mkdir -p "${SKILL_DIR}/references"
+    fi
+    if [ "${SKIP_SEO}" = "0" ]; then
+        mkdir -p "${SEO_SKILL_DIR}/references"
+    fi
     mkdir -p "${AGENT_DIR}"
 
     # Clone or update
     TEMP_DIR=$(mktemp -d)
     trap 'rm -rf "${TEMP_DIR}"' EXIT
 
-    echo "↓ Downloading Claude Ads..."
-    git clone --depth 1 "${REPO_URL}" "${TEMP_DIR}/claude-ads" 2>/dev/null
+    echo "↓ Downloading claude-ads..."
+    git clone --depth 1 "${PRIMARY_REPO_URL}" "${TEMP_DIR}/claude-ads" 2>/dev/null \
+        || git clone --depth 1 "${FALLBACK_REPO_URL}" "${TEMP_DIR}/claude-ads" 2>/dev/null
 
-    # Copy main skill + references
-    echo "→ Installing skill files..."
-    cp "${TEMP_DIR}/claude-ads/ads/SKILL.md" "${SKILL_DIR}/SKILL.md"
-    cp "${TEMP_DIR}/claude-ads/ads/references/"*.md "${SKILL_DIR}/references/"
+    # ── Ads skill ────────────────────────────────────────────────────────────
+    if [ "${SKIP_ADS}" = "0" ]; then
+        echo "→ Installing Ads skill files..."
+        cp "${TEMP_DIR}/claude-ads/ads/SKILL.md" "${SKILL_DIR}/SKILL.md"
+        if [ -d "${TEMP_DIR}/claude-ads/ads/references" ]; then
+            cp "${TEMP_DIR}/claude-ads/ads/references/"*.md "${SKILL_DIR}/references/"
+        fi
+    fi
 
-    # Copy sub-skills
+    # ── SEO skill ────────────────────────────────────────────────────────────
+    if [ "${SKIP_SEO}" = "0" ]; then
+        echo "→ Installing SEO skill files..."
+        cp "${TEMP_DIR}/claude-ads/seo/SKILL.md" "${SEO_SKILL_DIR}/SKILL.md"
+        if [ -d "${TEMP_DIR}/claude-ads/seo/references" ]; then
+            cp "${TEMP_DIR}/claude-ads/seo/references/"*.md "${SEO_SKILL_DIR}/references/"
+        fi
+    fi
+
+    # ── Sub-skills (ads-* and seo-*) ─────────────────────────────────────────
     echo "→ Installing sub-skills..."
     for skill_dir in "${TEMP_DIR}/claude-ads/skills"/*/; do
         skill_name=$(basename "${skill_dir}")
+        # Respect --skip-ads / --skip-seo flags
+        if [ "${SKIP_ADS}" = "1" ] && echo "${skill_name}" | grep -q "^ads-"; then
+            continue
+        fi
+        if [ "${SKIP_SEO}" = "1" ] && echo "${skill_name}" | grep -q "^seo"; then
+            continue
+        fi
         target="${SKILL_BASE}/${skill_name}"
         mkdir -p "${target}"
         cp "${skill_dir}SKILL.md" "${target}/SKILL.md"
@@ -243,21 +293,20 @@ main() {
         fi
     done
 
-    # Copy agents
+    # ── Agents ────────────────────────────────────────────────────────────────
     echo "→ Installing subagents..."
     cp "${TEMP_DIR}/claude-ads/agents/"*.md "${AGENT_DIR}/" 2>/dev/null || true
 
-    # Copy scripts (optional Python tools)
+    # ── Python scripts ────────────────────────────────────────────────────────
     SCRIPTS_DIR="${SKILL_DIR}/scripts"
     if [ -d "${TEMP_DIR}/claude-ads/scripts" ]; then
-        echo "→ Installing Python scripts..."
+        echo "→ Installing Python scripts (ads + SEO)..."
         mkdir -p "${SCRIPTS_DIR}"
         cp "${TEMP_DIR}/claude-ads/scripts/"*.py "${SCRIPTS_DIR}/"
         cp "${TEMP_DIR}/claude-ads/requirements.txt" "${SKILL_DIR}/requirements.txt"
     fi
 
-    # Install Python dependencies — only for hosts that explicitly support
-    # Python execution (claude, codex). Other targets skip the pip step.
+    # ── Python dependencies ──────────────────────────────────────────────────
     echo ""
     if [ "${ALLOW_PIP}" = "1" ]; then
         echo "→ Installing Python dependencies..."
@@ -274,40 +323,105 @@ main() {
         fi
     else
         echo "ℹ Skipping Python dependencies — ${HOST_LABEL} host runtime may not execute Python skills directly."
-        echo "  If you need PDF reports / landing-page analysis / screenshots, install manually:"
+        echo "  If you need SEO scanning / fixing, install manually:"
         echo "    pip3 install -r ${SKILL_DIR}/requirements.txt"
     fi
 
-    # Check for banana-claude (image generation provider)
+    # ── Venice AI configuration ───────────────────────────────────────────────
     echo ""
-    if [ -d "${SKILL_BASE}/banana" ] || [ -f "${SKILL_BASE}/banana/SKILL.md" ]; then
-        echo "  ✓ banana-claude detected (image generation ready)"
-    else
-        echo "  ⚠ banana-claude not installed. Image generation (/ads generate, /ads photoshoot) requires it."
-        echo "    Install: curl -fsSL https://raw.githubusercontent.com/AgriciDaniel/banana-claude/main/install.sh | bash"
-        echo "    Then run: /banana setup (to configure API key)"
+    if [ "${SKIP_SEO}" = "0" ]; then
+        SEO_CONFIG_DIR="${SEO_SKILL_DIR}"
+        SEO_CONFIG_FILE="${SEO_CONFIG_DIR}/config.json"
+        mkdir -p "${SEO_CONFIG_DIR}"
+
+        # Use provided key (--venice-api-key flag) or fall back to VENICE_API_KEY env var
+        _VENICE_KEY="${VENICE_API_KEY:-}"
+
+        if [ -n "${_VENICE_KEY}" ]; then
+            cat > "${SEO_CONFIG_FILE}" <<VNCEOF
+{
+  "api_key": "${_VENICE_KEY}",
+  "model": "llama-3.3-70b",
+  "base_url": "https://api.venice.ai/api/v1",
+  "temperature": 0.3,
+  "max_tokens": 512,
+  "provider": "venice"
+}
+VNCEOF
+            echo "  ✓ Venice AI config written to: ${SEO_CONFIG_FILE}"
+        else
+            # Write placeholder config if not already present
+            if [ ! -f "${SEO_CONFIG_FILE}" ]; then
+                cat > "${SEO_CONFIG_FILE}" <<VNCEOF
+{
+  "api_key": "",
+  "model": "llama-3.3-70b",
+  "base_url": "https://api.venice.ai/api/v1",
+  "temperature": 0.3,
+  "max_tokens": 512,
+  "provider": "venice"
+}
+VNCEOF
+            fi
+            echo "  ⚠ Venice AI API key not set."
+            echo "    For AI-assisted SEO fixes (title, description, alt-text, schema):"
+            echo "    Option 1: export VENICE_API_KEY=vn-your-key-here"
+            echo "    Option 2: edit ${SEO_CONFIG_FILE}"
+            echo "    Get your key at: https://venice.ai/settings/api"
+            echo ""
+            echo "    Structural SEO checks (viewport, canonical, OG tags, etc.) work without a key."
+        fi
     fi
 
+    # ── banana-claude check ───────────────────────────────────────────────────
     echo ""
-    echo "✓ Claude Ads installed successfully for ${HOST_LABEL}!"
+    if [ "${SKIP_ADS}" = "0" ]; then
+        if [ -d "${SKILL_BASE}/banana" ] || [ -f "${SKILL_BASE}/banana/SKILL.md" ]; then
+            echo "  ✓ banana-claude detected (image generation ready)"
+        else
+            echo "  ⚠ banana-claude not installed. Image generation (/ads generate, /ads photoshoot) requires it."
+            echo "    Install: curl -fsSL https://raw.githubusercontent.com/AgriciDaniel/banana-claude/main/install.sh | bash"
+            echo "    Then run: /banana setup (to configure API key)"
+        fi
+        echo ""
+    fi
+
+    echo "✓ Installation complete for ${HOST_LABEL}!"
     echo ""
     echo "  Installed to:"
     echo "    Skills: ${SKILL_BASE}"
     echo "    Agents: ${AGENT_DIR}"
     echo ""
-    echo "  Bundled:"
-    echo "    • 1 main skill (ads orchestrator)"
-    echo "    • 22 sub-skills (platform + functional + creative)"
-    echo "    • 10 agents (6 audit + 4 creative)"
-    echo "    • 25 reference files"
-    echo "    • 12 industry templates"
-    echo ""
+    if [ "${SKIP_ADS}" = "0" ]; then
+        echo "  Ads skill:"
+        echo "    • 1 main skill (ads orchestrator)"
+        echo "    • 22 sub-skills (platform + functional + creative)"
+        echo "    • 10 agents (6 audit + 4 creative)"
+        echo "    • 25 reference files"
+        echo ""
+    fi
+    if [ "${SKIP_SEO}" = "0" ]; then
+        echo "  SEO skill (Venice AI powered):"
+        echo "    • 1 main skill (seo orchestrator)"
+        echo "    • 3 sub-skills (seo-audit, seo-fix, seo-scan)"
+        echo "    • Python scripts: seo_scanner.py, seo_fixer.py, seo_report.py, venice_provider.py"
+        echo ""
+    fi
     echo "Usage:"
     echo "  1. Start your host CLI"
-    echo "  2. Run commands:       /ads audit"
-    echo "                         /ads plan saas"
-    echo "                         /ads google"
-    echo ""
+    if [ "${SKIP_ADS}" = "0" ]; then
+        echo "  2. Ads commands:   /ads audit"
+        echo "                      /ads plan saas"
+        echo "                      /ads google"
+        echo ""
+    fi
+    if [ "${SKIP_SEO}" = "0" ]; then
+        echo "  3. SEO commands:   /seo scan ./public_html"
+        echo "                      /seo audit"
+        echo "                      /seo fix --dry-run"
+        echo "                      /seo fix"
+        echo ""
+    fi
     echo "To uninstall: bash uninstall.sh --target=${TARGET}"
 }
 

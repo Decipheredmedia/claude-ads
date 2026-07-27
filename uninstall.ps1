@@ -35,19 +35,21 @@ function Main {
     $SkillBase = $paths.SkillBase
     $AgentDir = $paths.AgentDir
 
-    Write-Host "Uninstalling Claude Ads from $SkillBase and $AgentDir..."
+    Write-Host "Uninstalling from $SkillBase and $AgentDir..."
 
-    # Remove orchestrator
-    $MainSkill = Join-Path $SkillBase "ads"
-    if (Test-Path $MainSkill) {
-        Remove-Item -Path $MainSkill -Recurse -Force
+    # Remove orchestrators (ads + seo)
+    foreach ($skillName in @("ads", "seo")) {
+        $SkillPath = Join-Path $SkillBase $skillName
+        if (Test-Path $SkillPath) {
+            Remove-Item -Path $SkillPath -Recurse -Force
+        }
     }
 
-    # Remove all ads-* sub-skills via glob
+    # Remove all ads-* and seo-* sub-skills via glob
     if (Test-Path $SkillBase) {
-        Get-ChildItem -Path $SkillBase -Directory -Filter "ads-*" -ErrorAction SilentlyContinue | ForEach-Object {
-            Remove-Item -Path $_.FullName -Recurse -Force
-        }
+        Get-ChildItem -Path $SkillBase -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "ads-*" -or $_.Name -like "seo-*" } |
+            ForEach-Object { Remove-Item -Path $_.FullName -Recurse -Force }
     }
 
     # Remove bundled audit + creative agents.
@@ -68,7 +70,7 @@ function Main {
         }
     }
 
-    Write-Host "[OK] Claude Ads uninstalled." -ForegroundColor Green
+    Write-Host "[OK] Uninstalled (ads + seo skills removed)." -ForegroundColor Green
 }
 
 Main
